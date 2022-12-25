@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "nrrd-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "nrrd"
+crate-type = ["cdylib"]
+
+[dependencies]
+nrrd = { path = "../nrrd" }
+numpy = "0.16"
+ndarray = "0.15"
+pyo3 = { version = "0.16", features = ["abi3-py37", "extension-module", "multiple-pymethods"] }
+pyo3-built = { version = "0.4", optional = true }

@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "nrrd",
+]
+
+[workspace.package]
+version = "0.25.1"
+
+[workspace.dependencies]
