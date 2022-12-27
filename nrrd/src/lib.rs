@@ -14,6 +14,7 @@ pub struct Nrrd {
 
 fn parse_data(sizes: Vec<usize>, encoding: &str, data: &[u8]) -> Vec<f64> {
     type T = f64;
+    let type_size = std::mem::size_of::<T>();
 
     let count: usize = sizes.iter().product();
 
@@ -22,6 +23,10 @@ fn parse_data(sizes: Vec<usize>, encoding: &str, data: &[u8]) -> Vec<f64> {
             .split(|x| *x as char == ' ' || *x as char == '\n')
             .filter(|x| !x.is_empty())
             .map(|v| unsafe { str::from_utf8_unchecked(v).parse::<T>().unwrap() })
+            .collect(),
+        "raw" => data
+            .chunks(type_size)
+            .map(|b| T::from_le_bytes(b.try_into().unwrap()))
             .collect(),
         _ => panic!("Unknown encoding: '{}'", encoding),
     };
@@ -74,11 +79,9 @@ impl Nrrd {
         }
         if !metadata.contains_key("sizes") {
             panic!("Missing `sizes` in header")
-        }
-        else if !metadata.contains_key("encoding") {
+        } else if !metadata.contains_key("encoding") {
             panic!("Missing `encoding` in header")
-        }
-        else if !metadata.contains_key("dimension") {
+        } else if !metadata.contains_key("dimension") {
             panic!("Missing `dimension` in header")
         }
 
@@ -88,10 +91,7 @@ impl Nrrd {
             &buf[offset..],
         );
 
-        Self {
-            metadata,
-            data,
-        }
+        Self { metadata, data }
     }
 
     pub fn from_file(path: &Path) -> Self {
@@ -113,10 +113,23 @@ mod tests {
             ("encoding".to_string(), "ASCII".to_string()),
         ]);
 
-        let nrrd = Nrrd::from_file(Path::new(
-            "../tests/data/test-headers.nrrd",
-        ));
+        let nrrd = Nrrd::from_file(Path::new("../tests/data/test-headers.nrrd"));
         assert_eq!(nrrd.metadata, expected);
-        assert_eq!(nrrd.data.iter().sum::<f64>(), 13.);
+        assert_eq!(nrrd.data.iter().sum::<f64>(), 0. + 1. + 3. + 4. + 5.);
+    }
+
+    #[test]
+    fn parse_raw() {
+        let expected = Metadata::from([
+            ("type".to_string(), "double".to_string()),
+            ("dimension".to_string(), "1".to_string()),
+            ("sizes".to_string(), "5".to_string()),
+            ("encoding".to_string(), "raw".to_string()),
+            ("endian".to_string(), "little".to_string()),
+        ]);
+
+        let nrrd = Nrrd::from_file(Path::new("../tests/data/test-double-raw.nrrd"));
+        assert_eq!(nrrd.metadata, expected);
+        assert_eq!(nrrd.data.iter().sum::<f64>(), 0. + 1. + 2. + 3. + 4.);
     }
 }

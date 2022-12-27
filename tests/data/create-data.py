@@ -20,5 +20,14 @@ sizes: 5
 0 1 3 4 5
 ''')
 
+def create_raw():
+    header = {'type': 'double',
+              'encoding': 'raw',
+              }
+    data = np.arange(5, dtype=float)
+    nrrd.write('test-double-raw.nrrd', data, header)
+
+
 if __name__ == '__main__':
     create_header_test()
+    create_raw()
