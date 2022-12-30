@@ -20,6 +20,7 @@ sizes: 5
 0 1 3 4 5
 ''')
 
+
 def create_raw():
     header = {'type': 'double',
               'encoding': 'raw',
@@ -28,6 +29,25 @@ def create_raw():
     nrrd.write('test-double-raw.nrrd', data, header)
 
 
+def create_bz2():
+    header = {'type': 'double',
+              'encoding': 'bzip2',
+              }
+    data = np.arange(5, dtype=float)
+    nrrd.write('test-double-bz2.nrrd', data, header)
+
+
+def create_gzip():
+    header = {'type': 'double',
+              'encoding': 'gzip',
+              }
+    data = np.arange(5, dtype=float)
+    nrrd.write('test-double-gzip.nrrd', data, header)
+
+
 if __name__ == '__main__':
     create_header_test()
     create_raw()
+    create_bz2()
+    create_gzip()
+

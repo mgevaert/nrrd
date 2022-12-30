@@ -1,6 +1,8 @@
+use bzip2::read::BzDecoder;
 use core::fmt::Debug;
+use flate2::read::GzDecoder;
 use std::fs;
-use std::io::BufRead;
+use std::io::{BufRead, Read};
 use std::path::Path;
 use std::str;
 use std::str::FromStr;
@@ -28,6 +30,34 @@ fn parse_data(sizes: Vec<usize>, encoding: &str, data: &[u8]) -> Vec<f64> {
             .chunks(type_size)
             .map(|b| T::from_le_bytes(b.try_into().unwrap()))
             .collect(),
+        "bzip2" => {
+            let mut output = Vec::with_capacity(count * type_size);
+            let mut decompressor = BzDecoder::new(data);
+            match decompressor.read_to_end(&mut output) {
+                Ok(len) => {
+                    assert!(len == count * type_size);
+                    output
+                        .chunks(type_size)
+                        .map(|b| T::from_le_bytes(b.try_into().unwrap()))
+                        .collect()
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
+        "gzip" => {
+            let mut output = Vec::with_capacity(count * type_size);
+            let mut decompressor = GzDecoder::new(data);
+            match decompressor.read_to_end(&mut output) {
+                Ok(len) => {
+                    assert!(len == count * type_size);
+                    output
+                        .chunks(type_size)
+                        .map(|b| T::from_le_bytes(b.try_into().unwrap()))
+                        .collect()
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
         _ => panic!("Unknown encoding: '{}'", encoding),
     };
 
@@ -129,6 +159,34 @@ mod tests {
         ]);
 
         let nrrd = Nrrd::from_file(Path::new("../tests/data/test-double-raw.nrrd"));
+        assert_eq!(nrrd.metadata, expected);
+        assert_eq!(nrrd.data.iter().sum::<f64>(), 0. + 1. + 2. + 3. + 4.);
+    }
+
+    #[test]
+    fn parse_binary_f64_bz2() {
+        let expected = Metadata::from([
+            ("type".to_string(), "double".to_string()),
+            ("dimension".to_string(), "1".to_string()),
+            ("sizes".to_string(), "5".to_string()),
+            ("encoding".to_string(), "bzip2".to_string()),
+            ("endian".to_string(), "little".to_string()),
+        ]);
+        let nrrd = Nrrd::from_file(Path::new("../tests/data/test-double-bz2.nrrd"));
+        assert_eq!(nrrd.metadata, expected);
+        assert_eq!(nrrd.data.iter().sum::<f64>(), 0. + 1. + 2. + 3. + 4.);
+    }
+
+    #[test]
+    fn parse_binary_f64_gz() {
+        let expected = Metadata::from([
+            ("type".to_string(), "double".to_string()),
+            ("dimension".to_string(), "1".to_string()),
+            ("sizes".to_string(), "5".to_string()),
+            ("encoding".to_string(), "gzip".to_string()),
+            ("endian".to_string(), "little".to_string()),
+        ]);
+        let nrrd = Nrrd::from_file(Path::new("../tests/data/test-double-gzip.nrrd"));
         assert_eq!(nrrd.metadata, expected);
         assert_eq!(nrrd.data.iter().sum::<f64>(), 0. + 1. + 2. + 3. + 4.);
     }
