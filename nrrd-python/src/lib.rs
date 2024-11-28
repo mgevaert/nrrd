@@ -1,48 +1,55 @@
-use ndarray::{ArrayView, IxDyn};
-use nrrd::{Nrrd as _Nrrd, NrrdData};
-use numpy::{PyArray, ToPyArray};
+use ndarray::{ArrayD};
+use ::nrrd::{Nrrd, NrrdData, read_file, parse_list};
+use numpy::{IntoPyArray};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 use std::path::Path;
 
-#[pyclass]
+
+macro_rules! into_pyarray {
+    ($data:expr, $sizes:expr, $py:expr) => {
+        unsafe { ArrayD::from_shape_vec_unchecked($sizes, $data).into_pyarray_bound($py).into() }
+    };
+}
+
+
+#[pyclass(name = "Nrrd")]
 #[repr(transparent)]
-pub struct Nrrd {
-    pub nrrd: _Nrrd,
+pub struct PyNrrd {
+    pub nrrd: Nrrd,
 }
 
 #[pymethods]
-impl Nrrd {
+impl PyNrrd {
     #[new]
     fn new(path: &str) -> Self {
-        let nrrd = _Nrrd::from_file(Path::new(path));
+        let nrrd = Nrrd::from_file(Path::new(path));
 
-        Nrrd { nrrd }
+        PyNrrd { nrrd }
     }
 
     #[getter]
-    fn metadata(&self, py: Python) -> Py<PyDict> {
+    fn metadata<'a>(&self, py: Python<'a>) -> Bound<'a, PyDict> {
         //XXX do I really need to copy the HashMap?
-        let mut ret = std::collections::HashMap::new();
-        ret.extend(self.nrrd.metadata.iter());
-        ret.into_py_dict(py).into()
+        self.nrrd.metadata.clone().into_py_dict_bound(py).into()
     }
 
     #[getter]
-    fn data(&self, py: Python) -> PyObject {
+    fn data<'py>(&self, py: Python<'py>) -> PyObject {
+
+        let sizes = self.nrrd.sizes();
 
         match &self.nrrd.data {
-            NrrdData::I8(data)  => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::U8(data)  => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::I16(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::U16(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::I32(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::U32(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::I64(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::U64(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::F32(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into(),
-            NrrdData::F64(data) => ArrayView::from_shape(self.nrrd.sizes(), &data).unwrap().to_pyarray(py).into()
-
+            NrrdData::I8(data)  => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::U8(data)  => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::I16(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::U16(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::I32(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::U32(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::I64(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::U64(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::F32(data) => into_pyarray!(data.clone(), sizes, py),
+            NrrdData::F64(data) => into_pyarray!(data.clone(), sizes, py),
         }
 
 
@@ -58,7 +65,37 @@ impl Nrrd {
 }
 
 #[pymodule]
-fn nrrd(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_class::<Nrrd>()?;
+fn nrrd<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<PyNrrd>()?;
+
+    #[pyfn(m)]
+    #[pyo3(name = "read")]
+    fn read<'py>(
+        py: Python<'py>,
+        path: &str,
+    ) -> (PyObject, Bound<'py, PyDict>) {
+
+        let (metadata, data) = read_file(Path::new(path));
+
+        let pyheader = metadata.clone().into_py_dict_bound(py).into();
+
+        let sizes = parse_list::<usize>(metadata["sizes"].as_str());
+
+        let pydata = match data {
+            NrrdData::I8(data)  => into_pyarray!(data, sizes, py),
+            NrrdData::U8(data)  => into_pyarray!(data, sizes, py),
+            NrrdData::I16(data) => into_pyarray!(data, sizes, py),
+            NrrdData::U16(data) => into_pyarray!(data, sizes, py),
+            NrrdData::I32(data) => into_pyarray!(data, sizes, py),
+            NrrdData::U32(data) => into_pyarray!(data, sizes, py),
+            NrrdData::I64(data) => into_pyarray!(data, sizes, py),
+            NrrdData::U64(data) => into_pyarray!(data, sizes, py),
+            NrrdData::F32(data) => into_pyarray!(data, sizes, py),
+            NrrdData::F64(data) => into_pyarray!(data, sizes, py),
+        };
+
+        (pydata, pyheader)
+    }
+
     Ok(())
 }
