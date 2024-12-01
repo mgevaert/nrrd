@@ -11,70 +11,29 @@ type Metadata = std::collections::HashMap<String, String>;
 
 
 pub trait FromBuffer: {
-    fn from_le_buffer(buffer: &[u8]) -> Self;
+    fn from_buffer(buffer: &[u8], endian: NrrdEndian) -> Self;
 }
 
-impl FromBuffer for i8 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        i8::from_le_bytes(buffer.try_into().unwrap())
-    }
+macro_rules! impl_from_buffer {
+    ($($t:ty),*) => {
+        $(
+            impl FromBuffer for $t {
+                fn from_buffer(buffer: &[u8], endian: NrrdEndian) -> Self {
+                    match endian {
+                        NrrdEndian::BE => <$t>::from_be_bytes(buffer.try_into().unwrap()),
+                        NrrdEndian::LE => <$t>::from_le_bytes(buffer.try_into().unwrap()),
+                    }
+                }
+            }
+        )*
+    };
 }
 
-impl FromBuffer for u8 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        u8::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for i16 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        i16::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for u16 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        u16::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for i32 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        i32::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for u32 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        u32::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for i64 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        i64::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for u64 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        u64::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for f32 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        f32::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
-
-impl FromBuffer for f64 {
-    fn from_le_buffer(buffer: &[u8]) -> Self {
-        f64::from_le_bytes(buffer.try_into().unwrap())
-    }
-}
+// Use the macro to implement FromBuffer for supported numeric types
+impl_from_buffer!(i8, u8, i16, u16, i32, u32, i64, u64, f32, f64);
 
 
+#[derive(Copy, Clone)]
 /// NRDD data type variants as listed in https://teem.sourceforge.net/nrrd/format.html#type
 pub enum NrrdType {
     I8,
@@ -89,6 +48,9 @@ pub enum NrrdType {
     F64,
     BLOCK,
 }
+
+
+
 
 impl NrrdType {
     fn from_string(string: &str) -> Result<NrrdType, String> {
@@ -138,9 +100,28 @@ impl NrrdType {
         }
 
     }
+
+}
+
+#[derive(Copy, Clone)]
+pub enum NrrdEndian {
+    BE,
+    LE,
+}
+
+impl NrrdEndian {
+    fn from_string(string: &str) -> Result<NrrdEndian, String> {
+        match string.to_lowercase().as_str() {
+            "little" => Ok(NrrdEndian::LE),
+            "big" => Ok(NrrdEndian::BE),
+            _ => Err(format!("Unkown endianess '{}'", string)),
+        }
+    }
+
 }
 
 
+#[derive(Copy, Clone)]
 pub enum NrrdEncoding {
     RAW,
     ASCII,
@@ -198,10 +179,18 @@ pub struct Nrrd {
 }
 
 
-fn bytes_to_type<T: FromBuffer>(buffer: &[u8]) -> Vec<T> {
+fn bytes_to_type<T: FromBuffer>(buffer: &[u8], endian: NrrdEndian) -> Vec<T> {
+
+    let type_size = std::mem::size_of::<T>();
+
+    assert!(
+        buffer.len() % type_size == 0,
+        "Buffer size is not a multiple of the size of type.",
+    );
+
     buffer
-       .chunks_exact(std::mem::size_of::<T>())
-       .map(T::from_le_buffer)
+       .chunks_exact(type_size)
+       .map(|chunk| T::from_buffer(chunk, endian))
        .collect()
 }
 
@@ -218,16 +207,16 @@ where <T as FromStr>::Err: Debug
 
 
 
-fn parse_array<T>(metadata: &Metadata, data: &[u8]) -> Vec<T>
+fn parse_array<T>(metadata: &Metadata, data: &[u8], endian: NrrdEndian) -> Vec<T>
 where
     T: FromStr + FromBuffer + Clone,
-    <T as FromStr>::Err: Debug
+    <T as FromStr>::Err: Debug,
 {
     let encoding = NrrdEncoding::from_string(metadata["encoding"].as_str()).unwrap();
 
     let numbers: Vec<T> = match encoding {
         NrrdEncoding::ASCII => text_to_type::<T>(&data),
-        NrrdEncoding::RAW => bytes_to_type::<T>(&data),
+        NrrdEncoding::RAW => bytes_to_type::<T>(&data, endian),
         NrrdEncoding::BZIP2 => {
             let sizes = parse_list::<usize>(metadata["sizes"].as_str());
 
@@ -238,7 +227,7 @@ where
             match decompressor.read_to_end(&mut output) {
                 Ok(len) => {
                     assert!(len == count * type_size);
-                    bytes_to_type::<T>(&output)
+                    bytes_to_type::<T>(&output, endian)
                 }
                 Err(e) => panic!("{e}"),
             }
@@ -252,7 +241,7 @@ where
             match decompressor.read_to_end(&mut output) {
                 Ok(len) => {
                     assert!(len == count * type_size);
-                    bytes_to_type::<T>(&output)
+                    bytes_to_type::<T>(&output, endian)
                 }
                 Err(e) => panic!("{e}"),
             }
@@ -268,18 +257,20 @@ where
 pub fn read_data(metadata: &Metadata, buffer: &[u8]) -> NrrdData {
 
     let data_type = NrrdType::from_string(metadata["type"].as_str()).unwrap();
+    let endian = NrrdEndian::from_string(metadata["endian"].as_str()).unwrap();
+    // TODO: Maybe make decoder a generic too?
 
     match data_type {
-        NrrdType::I8  =>   NrrdData::I8(parse_array::<i8>(&metadata, &buffer)),
-        NrrdType::U8  =>   NrrdData::U8(parse_array::<u8>(&metadata, &buffer)),
-        NrrdType::I16 => NrrdData::I16(parse_array::<i16>(&metadata, &buffer)),
-        NrrdType::U16 => NrrdData::U16(parse_array::<u16>(&metadata, &buffer)),
-        NrrdType::I32 => NrrdData::I32(parse_array::<i32>(&metadata, &buffer)),
-        NrrdType::U32 => NrrdData::U32(parse_array::<u32>(&metadata, &buffer)),
-        NrrdType::I64 => NrrdData::I64(parse_array::<i64>(&metadata, &buffer)),
-        NrrdType::U64 => NrrdData::U64(parse_array::<u64>(&metadata, &buffer)),
-        NrrdType::F32 => NrrdData::F32(parse_array::<f32>(&metadata, &buffer)),
-        NrrdType::F64 => NrrdData::F64(parse_array::<f64>(&metadata, &buffer)),
+        NrrdType::I8  => NrrdData::I8(parse_array::<i8>(&metadata, &buffer, endian)),
+        NrrdType::U8  => NrrdData::U8(parse_array::<u8>(&metadata, &buffer, endian)),
+        NrrdType::I16 => NrrdData::I16(parse_array::<i16>(&metadata, &buffer, endian)),
+        NrrdType::U16 => NrrdData::U16(parse_array::<u16>(&metadata, &buffer, endian)),
+        NrrdType::I32 => NrrdData::I32(parse_array::<i32>(&metadata, &buffer, endian)),
+        NrrdType::U32 => NrrdData::U32(parse_array::<u32>(&metadata, &buffer, endian)),
+        NrrdType::I64 => NrrdData::I64(parse_array::<i64>(&metadata, &buffer, endian)),
+        NrrdType::U64 => NrrdData::U64(parse_array::<u64>(&metadata, &buffer, endian)),
+        NrrdType::F32 => NrrdData::F32(parse_array::<f32>(&metadata, &buffer, endian)),
+        NrrdType::F64 => NrrdData::F64(parse_array::<f64>(&metadata, &buffer, endian)),
         _ => panic!("Unkown data type encoding.")
     }
 }
@@ -406,6 +397,7 @@ mod tests {
             ("dimension".to_string(), "1".to_string()),
             ("sizes".to_string(), "5".to_string()),
             ("encoding".to_string(), "ASCII".to_string()),
+            ("endian".to_string(), "little".to_string()),
         ]);
 
         let nrrd = Nrrd::from_file(Path::new("../tests/data/test-headers.nrrd"));
