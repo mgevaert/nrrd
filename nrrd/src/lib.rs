@@ -388,6 +388,32 @@ mod tests {
         };
     }
 
+    macro_rules! test_read_data_be {
+        ($data_type:ty, $variant:path, $type_aliases:expr, $numbers:expr) => {
+            {
+                let bytes: Vec<u8> = $numbers.iter().flat_map(|&num| num.to_be_bytes()).collect();
+
+                for type_synonym in $type_aliases {
+                    let metadata = Metadata::from([
+                        ("type".to_string(), type_synonym.to_string()),
+                        ("dimension".to_string(), "1".to_string()),
+                        ("sizes".to_string(), $numbers.len().to_string()),
+                        ("encoding".to_string(), "raw".to_string()),
+                        ("endian".to_string(), "big".to_string()),
+                    ]);
+
+                    let data = read_data(&metadata, &bytes);
+
+                    if let $variant(values) = data {
+                        assert_eq!(vec_compare::<$data_type>(&$numbers, &values), true);
+                    } else {
+                        panic!("Wrong Variant.");
+                    }
+                }
+            }
+        };
+    }
+
 
 
     #[test]
@@ -467,47 +493,57 @@ mod tests {
     }
 
     #[test]
-    fn test_read_data_le() {
+    fn test_read_data() {
 
         let numbers: [i8; 5] = [5, 10, 15, 20, 25];
         let aliases = ["signed char", "int8", "int8_t"];
         test_read_data_le!(i8, NrrdData::I8, aliases, numbers);
+        test_read_data_be!(i8, NrrdData::I8, aliases, numbers);
 
         let numbers: [u8; 5] = [5, 10, 15, 20, 25];
         let aliases = ["unsigned char", "uchar", "uint8", "uint8_t"];
         test_read_data_le!(u8, NrrdData::U8, aliases, numbers);
+        test_read_data_be!(u8, NrrdData::U8, aliases, numbers);
 
         let numbers: [i16; 5] = [5, 10, 15, 20, 25];
         let aliases = ["short", "short int", "signed short", "signed short int", "int16", "int16_t"];
         test_read_data_le!(i16, NrrdData::I16, aliases, numbers);
+        test_read_data_be!(i16, NrrdData::I16, aliases, numbers);
 
         let numbers: [u16; 5] = [5, 10, 15, 20, 25];
         let aliases = ["ushort", "unsigned short", "unsigned short int", "uint16", "uint16_t"];
         test_read_data_le!(u16, NrrdData::U16, aliases, numbers);
+        test_read_data_be!(u16, NrrdData::U16, aliases, numbers);
 
         let numbers: [i32; 5] = [5, 10, 15, 20, 25];
         let aliases = ["int", "signed int", "int32", "int32_t"];
         test_read_data_le!(i32, NrrdData::I32, aliases, numbers);
+        test_read_data_be!(i32, NrrdData::I32, aliases, numbers);
 
         let numbers: [u32; 5] = [5, 10, 15, 20, 25];
         let aliases = ["uint", "unsigned int", "uint32", "uint32_t"];
         test_read_data_le!(u32, NrrdData::U32, aliases, numbers);
+        test_read_data_be!(u32, NrrdData::U32, aliases, numbers);
 
         let numbers: [i64; 5] = [5, 10, 15, 20, 25];
         let aliases = ["longlong", "long long", "signed long long", "signed long long int", "int64", "int64_t"];
         test_read_data_le!(i64, NrrdData::I64, aliases, numbers);
+        test_read_data_be!(i64, NrrdData::I64, aliases, numbers);
 
         let numbers: [u64; 5] = [5, 10, 15, 20, 25];
         let aliases = ["ulonglong", "unsigned long long", "unsigned long long int", "uint64", "uint64_t"];
         test_read_data_le!(u64, NrrdData::U64, aliases, numbers);
+        test_read_data_be!(u64, NrrdData::U64, aliases, numbers);
 
         let numbers: [f32; 5] = [5.0, 10.0, 15.0, 20.0, 25.0];
         let aliases = ["float"];
         test_read_data_le!(f32, NrrdData::F32, aliases, numbers);
+        test_read_data_be!(f32, NrrdData::F32, aliases, numbers);
 
         let numbers: [f64; 5] = [5.0, 10.0, 15.0, 20.0, 25.0];
         let aliases = ["double"];
         test_read_data_le!(f64, NrrdData::F64, aliases, numbers);
+        test_read_data_be!(f64, NrrdData::F64, aliases, numbers);
 
     }
 }
