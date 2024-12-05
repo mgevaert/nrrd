@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 bzip2 = "0.4"
 flate2 = "1.0"
+
+[profile.release]
+opt-level = 3

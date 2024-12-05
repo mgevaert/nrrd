@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nrrd = { path = "../nrrd" }
-numpy = "0.16"
+numpy = "0.22"
 ndarray = "0.15"
-pyo3 = { version = "0.16", features = ["abi3-py37", "extension-module", "multiple-pymethods"] }
-pyo3-built = { version = "0.4", optional = true }
+pyo3 = { version = "0.22", features = ["abi3-py37", "extension-module", "multiple-pymethods"] }
+pyo3-built = { version = "0.5", optional = true }
